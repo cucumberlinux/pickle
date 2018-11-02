@@ -1,0 +1,341 @@
+#/bin/bash
+
+# P.I.C.K.L.E. (Package Install for Cucumber Kernels, Libraries and Executables)
+#
+# Version 1.1.2 (2017-12-03)
+VERSION='1.1.2'
+#
+# Copyright 2016, 2017 Scott Court
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Allow the user to specify an alternate system root
+ROOT=${ROOT:-/}
+
+# Load the configuration
+source $ROOT/etc/pickle.conf
+
+# Prints the help message
+pickle_help () {
+	cat << EOF
+Usage: $0 [options]
+Options:
+  --help                Displays this help message
+  --version             Displays version information and exits
+  --update              Updates the local package list
+  --hard-update         Updates the local package list, resetting any updates 
+                        you may have previously chosen to ignore.
+  --file-search <file>  Searches for packages that a file.
+
+When used without any arguments, pickle will check for any new packages or any
+existing packages that have updates available. It will then ask which packages
+you would like to install/update.
+
+When a single argument is specified, pickle will search for packages whose name
+contains that argument. It will then provide the option to download and install
+them.
+
+Note: it is a good idea to run '$0 --update' before installing or updating
+packages.
+
+Some influential enviroment variables:
+ROOT     When set causes \$ROOT to be used as the root directory instead of /.
+EOF
+}
+
+# Provides version information
+pickle_version () {
+	cat << EOF
+Package Installer for Cucumber Kernels, Libraries and Executables (PICKLE)
+Written by Scott Court
+Version $VERSION
+http://cucumberlinux.com
+EOF
+}
+
+# Checks if $NEW_FILE_ACTION is set and if not prompts the user
+pickle_check_new_file_action () {
+	if [ -z $NEW_FILE_ACTION ]; then
+		dialog --title "Update Configuration Files" --menu \
+			'How would you like to handle any updates to configuration files?
+
+If you would like to avoid being prompted for this every time you run Pickle, uncomment one of the NEW_FILE_ACTION= lines in /etc/pickle.conf.' \
+	15 110 5 \
+	'KEEP' 'Keep the existing files in place and leave the .new ones for consideration later.' \
+	'OVERWRITE' 'Blindly overwrite any existing files.' \
+	'REPLACE' 'Replace any existing files, but save the old files with the .old suffix.' 2> /tmp/$$choice || return 1 
+		export NEW_FILE_ACTION=$(cat /tmp/$$choice)
+	fi
+}
+
+# Updates the package list
+pickle_update () {
+	echo "Updating the local package list"
+	curl -# $MIRROR/file-list -o $ROOT/var/log/pickle/file-list
+	curl -# $MIRROR/updates -o $ROOT/var/log/pickle/updates
+	curl -# $MIRROR/contents.bz2 -o $ROOT/var/log/pickle/contents.bz2
+}
+
+# Searches for packages with updates available
+pickle_update_packages () {
+	if [ -e /tmp/pickle_update_menu ]; then
+		rm -f /tmp/pickle_update_menu
+	fi
+	touch /tmp/pickle_update_menu
+	tail $ROOT/var/log/pickle/updates -n $(expr $(wc -l $ROOT/var/log/pickle/updates | awk '{print $1}') - $(cat $ROOT/var/log/pickle/updates_position)) > /tmp/pickle_updates
+	while read line; do
+		if [ -z "$line" ]; then
+			continue
+		fi
+		pkg=$(echo $line | awk '{print $2}')
+		update_type=$(echo $line | awk '{print $1}')
+		if [ "$update_type" == "update" ]; then
+			filename=$(echo $pkg | rev | cut -d / -f 1 | cut -f 2- -d . | rev)
+			packagename=$(echo $filename | rev | cut -f 4- -d - | rev)
+			existing_package=$(grep $packagename /tmp/pickle_update_menu)
+			is_package_installed_any_version $filename 
+			status=$?
+			if [ ! -z "$existing_package" -a $status -ne 0 ]; then
+				grep -v "$existing_package" /tmp/pickle_update_menu > /tmp/pickle_update_menu2 2> /dev/null
+				echo "new:$pkg ? 0" >> /tmp/pickle_update_menu2
+				mv /tmp/pickle_update_menu2 /tmp/pickle_update_menu
+				continue
+			elif [ ! -z "$existing_package" ]; then
+				continue
+				echo
+			fi
+			is_package_installed_any_version $filename || continue
+			is_package_installed $filename && continue
+		elif [ "$update_type" == "removed" ]; then
+			if [ ! -z "$(grep "update:$pkg" /tmp/pickle_update_menu 2> /dev/null)" ]; then
+				grep -v "update:$pkg" /tmp/pickle_update_menu > /tmp/pickle_update_menu2 2> /dev/null
+				mv /tmp/pickle_update_menu2 /tmp/pickle_update_menu
+			fi
+			if [ ! -z "$(grep "install:$pkg" /tmp/pickle_update_menu 2> /dev/null)" ]; then
+				grep -v "install:$pkg" /tmp/pickle_update_menu > /tmp/pickle_update_menu2 2> /dev/null
+				mv /tmp/pickle_update_menu2 /tmp/pickle_update_menu
+			fi
+			continue
+		elif [ "$update_type" == "install" ]; then
+			filename=$(echo $pkg | rev | cut -d / -f 1 | cut -f 2- -d . | rev)
+			is_package_installed $filename && continue
+		elif [ "$update_type" == "new/up" ]; then
+			filename=$(echo $pkg | rev | cut -d / -f 1 | cut -f 2- -d . | rev)
+			is_package_installed $filename && continue
+			if is_package_installed_any_version $filename; then
+				update_type="update"
+			else
+				update_type="new"
+			fi
+		else
+			# Check if we should ignore new packages.
+			[ "$IGNORE_NEW_PACKAGES" == "true" ] && continue
+			filename=$(echo $pkg | rev | cut -d / -f 1 | cut -f 2- -d . | rev)
+			is_package_installed_any_version $filename && continue
+		fi
+		echo "$update_type:$pkg ? off" >> /tmp/pickle_update_menu
+	done < /tmp/pickle_updates
+	while [ true ]; do
+		ARGS=$(cat /tmp/pickle_update_menu 2> /dev/null) 
+		if [ -z "$ARGS" -o "$ARGS" == "\n" ]; then
+			echo "There are no updates available."
+			return
+		fi
+		dialog --title "Packages" --help-button --help-label "Select All" --extra-button --extra-label "Select None" --checklist "The following packages have updates available. Select the packages you want to update and select Ok." 20 70 16 $ARGS 2> /tmp/pickle_updates 
+		STATUS=$?
+		case $STATUS in
+			0) break ;;
+			1) return 1 ;;
+			2) sed -i /tmp/pickle_update_menu -e 's/ off/ on/g' ;;
+			3) sed -i /tmp/pickle_update_menu -e 's/ on/ off/g' ;;
+		esac
+	done
+
+	# Ask the user how he would like to handle .new files
+	pickle_check_new_file_action || return 1
+
+	for package in $(cat /tmp/pickle_updates); do
+		pickle_install_package $package
+	done
+
+	dialog --yesno "Would you like to ignore the updates you didn't install? This will prevent them from showing up when you run pickle in the future." 8 40
+	status=$?
+	if [ $status -eq 0 ]; then
+		wc -l $ROOT/var/log/pickle/updates | awk '{print $1}' > $ROOT/var/log/pickle/updates_position
+	fi
+}
+
+# Gets the name of a package from its package archive file ($1)
+get_package_name () {
+	echo $1 | rev | cut -f 4- -d - | rev
+}
+
+# Checks if any version of a package ($1) is installed
+# Returns 0 if the package is installed, otherwise 1.
+is_package_installed_any_version () {
+	nname=$(get_package_name $1)
+	for ipkg in $(ls $ROOT/var/log/packages | grep $nname); do
+		iname=$(get_package_name $ipkg)
+		if [ "$iname" == "$nname" ]; then
+			return 0
+		fi
+	done
+	return 1;
+}
+
+# Checks if the exact version of a package ($1) is installed
+# Returns 0 if the package is installed, otherwise 1.
+is_package_installed () {
+	nname=$(get_package_name $1)
+	for ipkg in $(ls $ROOT/var/log/packages | grep $1); do
+		iname=$(get_package_name $ipkg)
+		if [ "$iname" == "$nname" ]; then
+			return 0
+		fi
+	done
+	return 1;
+}
+
+# Searches for and optionally installs the package specified by $1
+pickle_install () {
+	echo "Searching for $1"
+
+	ARGS=""
+	for line in $(cat $ROOT/var/log/pickle/file-list | grep $1); do
+		pkg=$line
+		filename=$(echo $pkg | rev | cut -d / -f 1 | cut -f 2- -d . | rev)
+		name=$(get_package_name $filename)
+		is_package_installed $filename && continue
+		ARGS+=" new:$pkg ? 0 "
+	done 
+	if [ -z "$ARGS" ]; then
+		echo "No packages found."
+		return
+	fi
+	dialog --title "Packages" --checklist "The following packages matching \"$1\" are available. Select the packages you want to install and select Ok." 20 70 16 $ARGS 2> /tmp/pickle_updates || return 1
+
+	# Ask the user how he would like to handle .new files
+	pickle_check_new_file_action || return 1
+
+	for package in $(cat /tmp/pickle_updates); do
+		pickle_install_package $package
+	done
+}
+
+# Installs/updates the package specified by $1
+pickle_install_package () {
+	action=$(echo $1 | sed -e 's/:/ /' | awk '{print $1}')
+	path=$(echo $1 | sed -e 's/:/ /' | awk '{print $2}')
+	pkg=$(echo $path | rev | cut -d / -f 1 | rev)
+
+	if [[ "$path" == *testing* && "$WARN_TESTING" == "true"  && "$action" != "update" ]]; then
+		dialog --title "Warning" --yesno "You are installing $pkg from the testing repository. Packages in the testing repository are just that, packages for testing. This means they come with no quality assurance or guarantee of being up to date on security patches. Please be mindful of this when using testing packages. Would you like to continue installing $pkg?" 0 0 || return 1
+	fi
+
+	if [ -e /tmp/$pkg ]; then
+		rm -f /tmp/$pkg
+	fi
+
+	(
+		echo
+		echo $pkg
+		cd /tmp
+		curl -# $MIRROR/$path -O
+		if [ "$USE_GPG" = "true" ]; then
+			curl -# $MIRROR/${path}.asc -O
+			pickle_verify_signature /tmp/${pkg}.asc
+			STATUS=$?
+			if [ $STATUS -ne 0 ]; then
+				dialog --title "GPG Error" --yesno "The GPG signature for the package $pkg could not be verified. This could mean that someone is attempting to do something nasty. Do you still want to install this package? Unless you know there's a good reason you're seeing this, you should probably select no." 12 60
+				STATUS=$?
+				if [ $STATUS -ne 0 ]; then
+					return 1
+				fi
+			fi
+		fi
+	) || return 1
+	echo $1 | sed -e 's|/| |g' | awk '{print $2}' | rev | cut -f 4- -d - | rev
+	case $action in
+		new)
+			/sbin/installpkg --root $ROOT /tmp/$pkg
+			;;
+		update)
+			ROOT=$ROOT /sbin/upgradepkg /tmp/$pkg
+			;;
+		install)
+			/sbin/installpkg --root $ROOT /tmp/$pkg
+			;;
+		*)
+			echo "Error: unrecognized action: $action"
+	esac
+
+	# Cleanup
+	rm /tmp/$pkg{,.asc}
+
+}
+
+# Verifies the GPG signature of a package
+# $1 should be the path to the signature file (*.asc)
+# Returns 0 if the signature is valid, otherwise 1
+pickle_verify_signature () {
+	if [ ! -e $1 ]; then
+		return 1
+	fi
+
+	for key in $(ls $ROOT/etc/pickle.d/keys); do
+		gpg --no-default-keyring --keyring $ROOT/etc/pickle.d/keys/$key --verify $1 > /dev/null && return 0
+	done
+
+	return 1
+}
+
+# Parse the command line args (if any)
+case $# in 
+	0)
+		pickle_update_packages
+		;;
+	1)
+		case $1 in 
+			--help)
+				pickle_help
+				;;
+			--version)
+				pickle_version
+				;;
+			--update)
+				pickle_update
+				;;
+			--hard-update)
+				echo 0 > $ROOT/var/log/pickle/updates_position
+				pickle_update
+				;;
+			--file-search)
+				echo "Usage: $0 --file-search <file>"
+				;;
+			*)
+				pickle_install $1
+		esac
+		;;
+	2)
+		case $1 in
+			--file-search)
+				bzcat $ROOT/var/log/pickle/contents.bz2 | grep $2
+				;;
+		esac
+esac
