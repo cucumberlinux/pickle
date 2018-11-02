@@ -5,7 +5,7 @@ DESTDIR=/
 INSTALL=install
 SED=sed
 
-install: install-bin install-man
+install: install-bin install-doc
 
 install-bin: 
 	$(INSTALL) -o root -g root -d -m 755 $(DESTDIR)/etc/pickle.d/keys
@@ -18,4 +18,6 @@ install-bin:
 	$(INSTALL) -o root -g root -m 644 src/etc/pickle.d/keys/* $(DESTDIR)/etc/pickle.d/keys/
 
 install-doc:
+	$(INSTALL) -o root -g root -d -m 755 $(DESTDIR)/usr/share/man/man8
+	$(INSTALL) -o root -g root -m 644 src/man/man8/pickle.8 $(DESTDIR)/usr/share/man/man8/
 
