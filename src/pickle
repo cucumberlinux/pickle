@@ -2,8 +2,8 @@
 
 # P.I.C.K.L.E. (Package Install for Cucumber Kernels, Libraries and Executables)
 #
-# Version 1.1.2 (2017-12-03)
-VERSION='1.1.2'
+# Version %VERSION% (%DATE%)
+VERSION='%VERSION%'
 #
 # Copyright 2016, 2017 Scott Court
 #
@@ -65,7 +65,7 @@ pickle_version () {
 Package Installer for Cucumber Kernels, Libraries and Executables (PICKLE)
 Written by Scott Court
 Version $VERSION
-http://cucumberlinux.com
+https://cucumberlinux.com
 EOF
 }
 
