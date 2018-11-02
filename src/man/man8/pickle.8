@@ -1,0 +1,81 @@
+.\" Copyright 2018 Scott Court
+.\"
+.\" Permission is hereby granted, free of charge, to any person obtaining a copy
+.\" of this software and associated documentation files (the "Software"), todeal
+.\" in the Software without restriction, including without limitation the
+.\" rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+.\" sell copies of the Software, and to permit persons to whom the Software is
+.\" furnished to do so, subject to the following conditions:
+.\"
+.\" The above copyright notice and this permission notice shall be included in
+.\" all copies or substantial portions of the Software.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+.\" IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+.\" FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+.\" AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+.\" LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+.\" FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+.\" IN THE SOFTWARE.
+.TH PICKLE 8 2018-11-02 "Cucumber Linux 2.0" "Linux System Administrator's Manual"
+.SH NAME
+pickle \- package installer and updater
+
+.SH SYNOPSIS
+.B pickle
+[OPTION]
+[SEARCH_STRING]
+
+.SH DESCRIPTION
+When used without any arguments, pickle will check for any new packages or any
+existing packages that have updates available. It will then ask which packages
+you would like to install/update.
+.PP
+When a single argument is specified, pickle will search for packages whose name
+contains that argument. It will then provide the option to download and install
+them.
+.PP
+Note: it is a good idea to run 'pickle --update' before installing or
+updating packages.
+.PP
+Supported Options:
+.TP
+\fB--file-search <file>\fR
+Searches for and lists packages that contain the file <file>.
+.TP
+\fB--hard-update\fR
+Updates the local package list, resetting the list of any updates you may have
+previously chosen to ignore.
+.TP
+\fB--help\fR
+Displays a help message.
+.TP
+\fB--update\fR
+Updates the local package list.
+.TP
+\fB--version\fR
+Displays version information and exists.
+
+.SH ENVIRONMENT VARIABLES
+.IP \fBROOT\fP
+When set, causes $ROOT to be used as the root directory of the system instead
+of /.
+
+.SH FILES
+.nf
+/etc/pickle.conf
+/etc/pickle.d/
+.fi
+
+.SH HISTORY
+Pickle first appeard in Cucumber Linux 1.0.
+
+.SH AUTHOR
+Pickle was written by Scott Court (scott@cucumberlinux.com).
+
+.SH SEE ALSO
+.BR installpkg (8)
+.BR removepkg (8)
+.BR upgradepkg (8)
+.BR pkgtool (8)
+
