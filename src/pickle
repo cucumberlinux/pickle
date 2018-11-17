@@ -1,4 +1,4 @@
-#/bin/bash
+#!/bin/bash
 
 # P.I.C.K.L.E. (Package Install for Cucumber Kernels, Libraries and Executables)
 #
@@ -304,6 +304,11 @@ pickle_verify_signature () {
 
 	return 1
 }
+
+# Initialize the updates_position file to 0 if it does not exist
+if [ ! -e "$ROOT/var/log/pickle/updates_position" ]; then
+	echo 0 > $ROOT/var/log/pickle/updates_position
+fi
 
 # Parse the command line args (if any)
 case $# in 
